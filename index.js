@@ -1,20 +1,23 @@
 var unorm = require('unorm')
 var assert = require('assert')
-var pbkdf2 = require('react-native-crypto').pbkdf2Sync
-var createHash = require('react-native-crypto').createHash
+var createHash = require('create-hash')
 var randomBytes = require('react-native-randombytes').randomBytes
+var CryptoJS = require('crypto-js')
 
 var DEFAULT_WORDLIST = require('./wordlists/en.json')
 
-function mnemonicToSeed(mnemonic, password) {
-  var mnemonicBuffer = new Buffer(mnemonic, 'utf8')
-  var saltBuffer = new Buffer(salt(password), 'utf8')
-
-  return pbkdf2(mnemonicBuffer, saltBuffer, 2048, 64, 'sha512')
+function mnemonicToSeed(mnemonic, numIterations) {
+  var salt = CryptoJS.lib.WordArray.random(128 / 8)
+  var key256Bits = CryptoJS.PBKDF2(mnemonic, salt, {
+    keySize: 256 / 32,
+    iterations: numIterations
+  })
+  return key256Bits
 }
 
-function mnemonicToSeedHex(mnemonic, password) {
-  return mnemonicToSeed(mnemonic, password).toString('hex')
+function mnemonicToSeedHex(mnemonic, numIterations) {
+  var seed = mnemonicToSeed(mnemonic, numIterations)
+  return seed.toString('hex')
 }
 
 function mnemonicToEntropy(mnemonic, wordlist) {
@@ -30,10 +33,12 @@ function mnemonicToEntropy(mnemonic, wordlist) {
   assert(belongToList, 'Invalid mnemonic')
 
   // convert word indices to 11 bit binary strings
-  var bits = words.map(function(word) {
-    var index = wordlist.indexOf(word)
-    return lpad(index.toString(2), '0', 11)
-  }).join('')
+  var bits = words
+    .map(function(word) {
+      var index = wordlist.indexOf(word)
+      return lpad(index.toString(2), '0', 11)
+    })
+    .join('')
 
   // split the binary string into ENT/CS
   var dividerIndex = Math.floor(bits.length / 33) * 32
@@ -97,7 +102,9 @@ function validateMnemonic(mnemonic, wordlist) {
 }
 
 function checksumBits(entropyBuffer) {
-  var hash = createHash('sha256').update(entropyBuffer).digest()
+  var hash = createHash('sha256')
+    .update(entropyBuffer)
+    .digest()
 
   // Calculated constants from BIP39
   var ENT = entropyBuffer.length * 8
@@ -113,14 +120,16 @@ function salt(password) {
 //=========== helper methods from bitcoinjs-lib ========
 
 function bytesToBinary(bytes) {
-  return bytes.map(function(x) {
-    return lpad(x.toString(2), '0', 8)
-  }).join('');
+  return bytes
+    .map(function(x) {
+      return lpad(x.toString(2), '0', 8)
+    })
+    .join('')
 }
 
 function lpad(str, padString, length) {
-  while (str.length < length) str = padString + str;
-  return str;
+  while (str.length < length) str = padString + str
+  return str
 }
 
 module.exports = {
